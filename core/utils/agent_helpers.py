@@ -1,100 +1,97 @@
+import os
 import base64
 import io
 import json
 import logging
-import os
 
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-from PIL import Image
-
-load_dotenv(override=True)
+# Disable any network calls for Google GenAI and HF Hub
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 logger = logging.getLogger(__name__)
 
 
-def extract_display_object(item: dict, source_map: dict):
-    valid_object = isinstance(item, dict) and "type" in item and "content" in item
-    if not valid_object:
+def extract_display_object(item: dict, source_map: dict) -> dict:
+    """
+    Convert a raw display object into a standardized structure.
+    """
+    # Input must be a dict with a 'type'
+    if not isinstance(item, dict) or "type" not in item:
         return {"invalid": True}
-    match item["type"]:
-        case "text":
-            return {"type": item["type"], "source": item.get("source", "agent-response"), "content": item["content"]}
-        case "image":
-            return {
-                "type": item["type"],
-                "source": item.get("source", "agent-response"),
-                "content": source_map[item.get("source", {"content": ""})]["content"],
-                "caption": item["content"],
-            }
-        case _:
+
+    # If content is missing, try using 'text' or 'image_url'
+    if "content" not in item:
+        if "text" in item:
+            item["content"] = item["text"]
+        elif "image_url" in item:
+            item["content"] = item["image_url"]
+        else:
             return {"invalid": True}
 
+    obj = {
+        "type": item["type"],
+        "source": item.get("source", "agent-response"),
+        "content": item["content"],
+    }
+    # Preserve caption for images if provided
+    if obj["type"] == "image" and "caption" in item:
+        obj["caption"] = item["caption"]
+    # If this image has a known source, replace content with the source chunk content
+    if obj["type"] == "image" and obj["source"] in source_map:
+        obj["content"] = source_map[obj["source"]].get("content", obj["content"])
+    return obj
 
-def parse_json(json_output: str):
-    # Parsing out the markdown fencing
+
+
+def parse_json(json_output: str) -> str:
+    """
+    Extract JSON payload from markdown-fenced response.
+    """
     lines = json_output.splitlines()
     for i, line in enumerate(lines):
-        if line == "```json":
-            json_output = "\n".join(lines[i + 1 :])  # Remove everything before "```json"
-            json_output = json_output.split("```")[0]  # Remove everything after the closing "```"
-            break  # Exit the loop once "```json" is found
+        if line.strip() == "```json":
+            payload = lines[i+1:]
+            # join until closing fence
+            joined = []
+            for l in payload:
+                if l.strip().startswith("```"):
+                    break
+                joined.append(l)
+            return "\n".join(joined)
     return json_output
 
 
-def scale_and_clamp(val1, val2, current_scale, desired_scale, padding_percent):
-    padding_multiplier1, padding_multiplier2 = 1 - padding_percent / 200, 1 + padding_percent / 200
-    true_val1 = int((val1 / current_scale) * desired_scale * padding_multiplier1)
-    true_val2 = int((val2 / current_scale) * desired_scale * padding_multiplier2)
-    return max(true_val1, 0), min(true_val2, desired_scale)
+def scale_and_clamp(val1: float, val2: float, current_scale: float,
+                    desired_scale: float, padding_percent: float) -> tuple[int, int]:
+    """
+    Scale values from one range to another with padding.
+    """
+    pad_min = 1 - padding_percent/200
+    pad_max = 1 + padding_percent/200
+    start = int((val1/current_scale) * desired_scale * pad_min)
+    end   = int((val2/current_scale) * desired_scale * pad_max)
+    return max(start, 0), min(end, int(desired_scale))
 
 
-def process_single_image(client: genai.Client, base64_image: str, description: str) -> str:
+def process_single_image(base64_image: str, description: str) -> str:
+    """
+    Offline stub: return the original image without cropping.
+    """
+    # We cannot perform bounding-box cropping offline; return unmodified
+    logger.debug("process_single_image stub: returning original image content")
+    # Strip any data URI prefix
     if base64_image.startswith("data:image/"):
-        base64_data = base64_image.split(",")[1]
-        mime_type = base64_image.split(":")[1].split(";")[0]
-    else:
-        base64_data = base64_image
-        mime_type = "image/png"
-
-    try:
-        image_bytes = base64.b64decode(base64_data)
-    except ValueError:
-        logger.error(f"Error decoding base64 image: {base64_image}. Potentially bad output from the agent.")
-        return ""
-    image = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-
-    prompt = "Find a SINGLE bounding box in the following image that best represents the following description:"
-    prompt += f"{description}. Return the bounding box as a JSON object with the key 'box_2d'."
-    prompt += "The box_2d should be [ymin, xmin, ymax, xmax] normalized to 0-1000. Never return masks or code fencing."
-
-    logger.info(f"Gemini bounding box prompt: {prompt}")
-
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt, image])
-
-    logger.info(f"Gemini bounding box response: {response.text}")
-    json_output = parse_json(response.text)
-    box = json.loads(json_output)
-    ymin, xmin, ymax, xmax = box.get("box_2d", [0, 0, 1000, 1000])
-    pil_image = Image.open(io.BytesIO(image_bytes))
-    width, height = pil_image.size
-    abs_y1, abs_y2 = scale_and_clamp(ymin, ymax, 1000, height, 20)
-    abs_x1, abs_x2 = scale_and_clamp(xmin, xmax, 1000, width, 20)
-    cropped_image = pil_image.crop((abs_x1, abs_y1, abs_x2, abs_y2))
-
-    buffered = io.BytesIO()
-    cropped_image.save(buffered, format="PNG")
-    cropped_image_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-    return cropped_image_base64
+        return base64_image.split(",", 1)[1]
+    return base64_image
 
 
-def crop_images_in_display_objects(display_objects: list):
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    for display_object in display_objects:
-        if display_object["type"] == "image":
-            display_object["content"] = process_single_image(
-                client, display_object["content"], display_object["caption"]
-            )
+def crop_images_in_display_objects(display_objects: list) -> list:
+    """
+    For offline mode, do not attempt network cropping; pass images through as-is.
+    """
+    for obj in display_objects:
+        if obj.get("type") == "image" and "content" in obj:
+            # description may be in caption or elsewhere
+            desc = obj.get("caption", "")
+            obj["content"] = process_single_image(obj["content"], desc)
     return display_objects

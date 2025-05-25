@@ -38,6 +38,7 @@ from core.services.rules_processor import RulesProcessor
 from core.storage.base_storage import BaseStorage
 from core.vector_store.base_vector_store import BaseVectorStore
 from core.vector_store.multi_vector_store import MultiVectorStore
+from core.utils.model_loader import local_model_path
 
 from ..models.auth import AuthContext
 from ..models.folders import Folder
@@ -48,7 +49,6 @@ IMAGE = {im.mime for im in IMAGE}
 
 CHARS_PER_TOKEN = 4
 TOKENS_PER_PAGE = 630
-
 
 class DocumentService:
     async def _ensure_folder_exists(
@@ -304,15 +304,16 @@ class DocumentService:
 
         model_name = "vidore/colSmol-256M"
         device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
-
+        path = local_model_path(model_name)
         model = ColIdefics3.from_pretrained(
-            model_name,
+            path, 
+            local_files_only=True,
             torch_dtype=torch.bfloat16,
             device_map=device,  # "cuda:0",  # or "mps" if on Apple Silicon
             attn_implementation="eager",  # "flash_attention_2" if is_flash_attn_2_available() else None,
             # or "eager" if "mps"
         ).eval()
-        processor = ColIdefics3Processor.from_pretrained(model_name)
+        processor = ColIdefics3Processor.from_pretrained(path, local_files_only=True)
 
         # Score regular chunks with colpali model for consistent comparison
         batch_chunks = processor.process_queries([chunk.content for chunk in chunks]).to(device)

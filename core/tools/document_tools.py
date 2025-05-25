@@ -252,6 +252,12 @@ async def list_documents(
     try:
         # Create system filters for folder and user scoping
         system_filters = {}
+        # Handle string "null" or None
+        if isinstance(filters, str) and filters.lower() == "null":
+            filters = None
+        elif filters and not isinstance(filters, dict):
+            filters = None
+
         if folder_name:
             system_filters["folder_name"] = folder_name
         if end_user_id:

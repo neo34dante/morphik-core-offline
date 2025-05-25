@@ -1,4 +1,8 @@
 import base64
+import os
+# (Optional) double-secure against any accidental Hub calls
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 import io
 import logging
 import time
@@ -13,9 +17,11 @@ from PIL.Image import open as open_image
 from core.config import get_settings
 from core.embedding.base_embedding_model import BaseEmbeddingModel
 from core.models.chunk import Chunk
+from core.utils.model_loader import local_model_path
 
 logger = logging.getLogger(__name__)
-
+model_name = "tsystems/colqwen2.5-3b-multilingual-v1.0"
+path=local_model_path(model_name)
 
 class ColpaliEmbeddingModel(BaseEmbeddingModel):
     def __init__(self):
@@ -23,13 +29,15 @@ class ColpaliEmbeddingModel(BaseEmbeddingModel):
         logger.info(f"Initializing ColpaliEmbeddingModel with device: {device}")
         start_time = time.time()
         self.model = ColQwen2_5.from_pretrained(
-            "tsystems/colqwen2.5-3b-multilingual-v1.0",
+            path,
+            local_files_only=True,
             torch_dtype=torch.bfloat16,
             device_map=device,  # Automatically detect and use available device
             attn_implementation="flash_attention_2" if device == "cuda" else "eager",
         ).eval()
         self.processor: ColQwen2_5_Processor = ColQwen2_5_Processor.from_pretrained(
-            "tsystems/colqwen2.5-3b-multilingual-v1.0"
+            path,
+            local_files_only=True,
         )
         self.settings = get_settings()
         self.mode = self.settings.MODE

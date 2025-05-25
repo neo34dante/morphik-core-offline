@@ -195,8 +195,8 @@ async def knowledge_graph_query(
 
                 relationships = []
                 for rel in subgraph_relationships:
-                    source_label = entity_map.get(rel.source_id, Entity(label="Unknown")).label
-                    target_label = entity_map.get(rel.target_id, Entity(label="Unknown")).label
+                    source_label = entity_map.get(rel.source_id, Entity(label="Unknown", type="unknown")).label
+                    target_label = entity_map.get(rel.target_id, Entity(label="Unknown", type="unknown")).label
 
                     relationships.append(
                         {

@@ -38,7 +38,7 @@ from core.models.request import (
     SetFolderRuleRequest,
     UpdateGraphRequest,
 )
-from core.services.telemetry import TelemetryService
+# TelemetryService import removed
 from core.services_init import document_service, storage
 
 # Initialize FastAPI app
@@ -59,7 +59,8 @@ app.add_middleware(
 )
 
 # Initialise telemetry service
-telemetry = TelemetryService()
+
+# No telemetry service initialization needed
 
 # OpenTelemetry instrumentation – exclude noisy spans/headers
 FastAPIInstrumentor.instrument_app(
@@ -123,7 +124,6 @@ except Exception as exc:  # noqa: BLE001
 
 
 @app.post("/ingest/text", response_model=Document)
-@telemetry.track(operation_type="ingest_text", metadata_resolver=telemetry.ingest_text_metadata)
 async def ingest_text(
     request: IngestTextRequest,
     auth: AuthContext = Depends(verify_token),
@@ -173,7 +173,6 @@ async def ingest_text(
 
 
 @app.post("/ingest/file", response_model=Document)
-@telemetry.track(operation_type="queue_ingest_file", metadata_resolver=telemetry.ingest_file_metadata)
 async def ingest_file(
     file: UploadFile,
     metadata: str = Form("{}"),
@@ -371,7 +370,6 @@ async def ingest_file(
 
 
 @app.post("/ingest/files", response_model=BatchIngestResponse)
-@telemetry.track(operation_type="queue_batch_ingest", metadata_resolver=telemetry.batch_ingest_metadata)
 async def batch_ingest_files(
     files: List[UploadFile] = File(...),
     metadata: str = Form("{}"),
@@ -583,7 +581,6 @@ async def batch_ingest_files(
 
 
 @app.post("/retrieve/chunks", response_model=List[ChunkResult])
-@telemetry.track(operation_type="retrieve_chunks", metadata_resolver=telemetry.retrieve_chunks_metadata)
 async def retrieve_chunks(request: RetrieveRequest, auth: AuthContext = Depends(verify_token)):
     """
     Retrieve relevant chunks.
@@ -620,7 +617,6 @@ async def retrieve_chunks(request: RetrieveRequest, auth: AuthContext = Depends(
 
 
 @app.post("/retrieve/docs", response_model=List[DocumentResult])
-@telemetry.track(operation_type="retrieve_docs", metadata_resolver=telemetry.retrieve_docs_metadata)
 async def retrieve_documents(request: RetrieveRequest, auth: AuthContext = Depends(verify_token)):
     """
     Retrieve relevant documents.
@@ -657,7 +653,6 @@ async def retrieve_documents(request: RetrieveRequest, auth: AuthContext = Depen
 
 
 @app.post("/batch/documents", response_model=List[Document])
-@telemetry.track(operation_type="batch_get_documents", metadata_resolver=telemetry.batch_documents_metadata)
 async def batch_get_documents(request: Dict[str, Any], auth: AuthContext = Depends(verify_token)):
     """
     Retrieve multiple documents by their IDs in a single batch operation.
@@ -696,7 +691,6 @@ async def batch_get_documents(request: Dict[str, Any], auth: AuthContext = Depen
 
 
 @app.post("/batch/chunks", response_model=List[ChunkResult])
-@telemetry.track(operation_type="batch_get_chunks", metadata_resolver=telemetry.batch_chunks_metadata)
 async def batch_get_chunks(request: Dict[str, Any], auth: AuthContext = Depends(verify_token)):
     """
     Retrieve specific chunks by their document ID and chunk number in a single batch operation.
@@ -744,7 +738,6 @@ async def batch_get_chunks(request: Dict[str, Any], auth: AuthContext = Depends(
 
 
 @app.post("/query", response_model=CompletionResponse)
-@telemetry.track(operation_type="query", metadata_resolver=telemetry.query_metadata)
 async def query_completion(request: CompletionQueryRequest, auth: AuthContext = Depends(verify_token)):
     """
     Generate completion using relevant chunks as context.
@@ -809,7 +802,6 @@ async def query_completion(request: CompletionQueryRequest, auth: AuthContext = 
 
 
 @app.post("/agent", response_model=Dict[str, Any])
-@telemetry.track(operation_type="agent_query")
 async def agent_query(request: AgentQueryRequest, auth: AuthContext = Depends(verify_token)):
     """
     Process a natural language query using the MorphikAgent and return the response.
@@ -913,7 +905,6 @@ async def get_document_status(document_id: str, auth: AuthContext = Depends(veri
 
 
 @app.delete("/documents/{document_id}")
-@telemetry.track(operation_type="delete_document", metadata_resolver=telemetry.document_delete_metadata)
 async def delete_document(document_id: str, auth: AuthContext = Depends(verify_token)):
     """
     Delete a document and all associated data.
@@ -977,7 +968,6 @@ async def get_document_by_filename(
 
 
 @app.post("/documents/{document_id}/update_text", response_model=Document)
-@telemetry.track(operation_type="update_document_text", metadata_resolver=telemetry.document_update_text_metadata)
 async def update_document_text(
     document_id: str,
     request: IngestTextRequest,
@@ -1017,7 +1007,6 @@ async def update_document_text(
 
 
 @app.post("/documents/{document_id}/update_file", response_model=Document)
-@telemetry.track(operation_type="update_document_file", metadata_resolver=telemetry.document_update_file_metadata)
 async def update_document_file(
     document_id: str,
     file: UploadFile,
@@ -1068,10 +1057,6 @@ async def update_document_file(
 
 
 @app.post("/documents/{document_id}/update_metadata", response_model=Document)
-@telemetry.track(
-    operation_type="update_document_metadata",
-    metadata_resolver=telemetry.document_update_metadata_resolver,
-)
 async def update_document_metadata(
     document_id: str, metadata: Dict[str, Any], auth: AuthContext = Depends(verify_token)
 ):
@@ -1108,16 +1093,13 @@ async def update_document_metadata(
 
 # Usage tracking endpoints
 @app.get("/usage/stats")
-@telemetry.track(operation_type="get_usage_stats", metadata_resolver=telemetry.usage_stats_metadata)
 async def get_usage_stats(auth: AuthContext = Depends(verify_token)) -> Dict[str, int]:
     """Get usage statistics for the authenticated user."""
-    if not auth.permissions or "admin" not in auth.permissions:
-        return telemetry.get_user_usage(auth.entity_id)
-    return telemetry.get_user_usage(auth.entity_id)
+    # Replace telemetry logic with a placeholder or remove entirely
+    return {"message": "Usage statistics tracking is not implemented."}
 
 
 @app.get("/usage/recent")
-@telemetry.track(operation_type="get_recent_usage", metadata_resolver=telemetry.recent_usage_metadata)
 async def get_recent_usage(
     auth: AuthContext = Depends(verify_token),
     operation_type: Optional[str] = None,
@@ -1125,30 +1107,12 @@ async def get_recent_usage(
     status: Optional[str] = None,
 ) -> List[Dict]:
     """Get recent usage records."""
-    if not auth.permissions or "admin" not in auth.permissions:
-        records = telemetry.get_recent_usage(
-            user_id=auth.entity_id, operation_type=operation_type, since=since, status=status
-        )
-    else:
-        records = telemetry.get_recent_usage(operation_type=operation_type, since=since, status=status)
-
-    return [
-        {
-            "timestamp": record.timestamp,
-            "operation_type": record.operation_type,
-            "tokens_used": record.tokens_used,
-            "user_id": record.user_id,
-            "duration_ms": record.duration_ms,
-            "status": record.status,
-            "metadata": record.metadata,
-        }
-        for record in records
-    ]
+    # Replace telemetry logic with a placeholder or remove entirely
+    return {"message": "Recent usage tracking is not implemented."}
 
 
 # Cache endpoints
 @app.post("/cache/create")
-@telemetry.track(operation_type="create_cache", metadata_resolver=telemetry.cache_create_metadata)
 async def create_cache(
     name: str,
     model: str,
@@ -1180,7 +1144,6 @@ async def create_cache(
 
 
 @app.get("/cache/{name}")
-@telemetry.track(operation_type="get_cache", metadata_resolver=telemetry.cache_get_metadata)
 async def get_cache(name: str, auth: AuthContext = Depends(verify_token)) -> Dict[str, Any]:
     """Get cache configuration by name."""
     try:
@@ -1191,7 +1154,6 @@ async def get_cache(name: str, auth: AuthContext = Depends(verify_token)) -> Dic
 
 
 @app.post("/cache/{name}/update")
-@telemetry.track(operation_type="update_cache", metadata_resolver=telemetry.cache_update_metadata)
 async def update_cache(name: str, auth: AuthContext = Depends(verify_token)) -> Dict[str, bool]:
     """Update cache with new documents matching its filter."""
     try:
@@ -1208,7 +1170,6 @@ async def update_cache(name: str, auth: AuthContext = Depends(verify_token)) -> 
 
 
 @app.post("/cache/{name}/add_docs")
-@telemetry.track(operation_type="add_docs_to_cache", metadata_resolver=telemetry.cache_add_docs_metadata)
 async def add_docs_to_cache(name: str, docs: List[str], auth: AuthContext = Depends(verify_token)) -> Dict[str, bool]:
     """Add specific documents to the cache."""
     try:
@@ -1222,7 +1183,6 @@ async def add_docs_to_cache(name: str, docs: List[str], auth: AuthContext = Depe
 
 
 @app.post("/cache/{name}/query")
-@telemetry.track(operation_type="query_cache", metadata_resolver=telemetry.cache_query_metadata)
 async def query_cache(
     name: str,
     query: str,
@@ -1245,7 +1205,6 @@ async def query_cache(
 
 
 @app.post("/graph/create", response_model=Graph)
-@telemetry.track(operation_type="create_graph", metadata_resolver=telemetry.create_graph_metadata)
 async def create_graph(
     request: CreateGraphRequest,
     auth: AuthContext = Depends(verify_token),
@@ -1354,7 +1313,6 @@ async def create_graph(
 
 
 @app.post("/folders", response_model=Folder)
-@telemetry.track(operation_type="create_folder", metadata_resolver=telemetry.create_folder_metadata)
 async def create_folder(
     folder_create: FolderCreate,
     auth: AuthContext = Depends(verify_token),
@@ -1415,7 +1373,6 @@ async def create_folder(
 
 
 @app.get("/folders", response_model=List[Folder])
-@telemetry.track(operation_type="list_folders", metadata_resolver=telemetry.list_folders_metadata)
 async def list_folders(
     auth: AuthContext = Depends(verify_token),
 ) -> List[Folder]:
@@ -1437,7 +1394,6 @@ async def list_folders(
 
 
 @app.get("/folders/{folder_id}", response_model=Folder)
-@telemetry.track(operation_type="get_folder", metadata_resolver=telemetry.get_folder_metadata)
 async def get_folder(
     folder_id: str,
     auth: AuthContext = Depends(verify_token),
@@ -1467,7 +1423,6 @@ async def get_folder(
 
 
 @app.delete("/folders/{folder_name}")
-@telemetry.track(operation_type="delete_folder", metadata_resolver=telemetry.delete_folder_metadata)
 async def delete_folder(
     folder_name: str,
     auth: AuthContext = Depends(verify_token),
@@ -1522,7 +1477,6 @@ async def delete_folder(
 
 
 @app.post("/folders/{folder_id}/documents/{document_id}")
-@telemetry.track(operation_type="add_document_to_folder", metadata_resolver=telemetry.add_document_to_folder_metadata)
 async def add_document_to_folder(
     folder_id: str,
     document_id: str,
@@ -1552,9 +1506,6 @@ async def add_document_to_folder(
 
 
 @app.delete("/folders/{folder_id}/documents/{document_id}")
-@telemetry.track(
-    operation_type="remove_document_from_folder", metadata_resolver=telemetry.remove_document_from_folder_metadata
-)
 async def remove_document_from_folder(
     folder_id: str,
     document_id: str,
@@ -1584,7 +1535,6 @@ async def remove_document_from_folder(
 
 
 @app.get("/graph/{name}", response_model=Graph)
-@telemetry.track(operation_type="get_graph", metadata_resolver=telemetry.get_graph_metadata)
 async def get_graph(
     name: str,
     auth: AuthContext = Depends(verify_token),
@@ -1624,7 +1574,6 @@ async def get_graph(
 
 
 @app.get("/graphs", response_model=List[Graph])
-@telemetry.track(operation_type="list_graphs", metadata_resolver=telemetry.list_graphs_metadata)
 async def list_graphs(
     auth: AuthContext = Depends(verify_token),
     folder_name: Optional[Union[str, List[str]]] = None,
@@ -1659,7 +1608,6 @@ async def list_graphs(
 
 
 @app.post("/graph/{name}/update", response_model=Graph)
-@telemetry.track(operation_type="update_graph", metadata_resolver=telemetry.update_graph_metadata)
 async def update_graph(
     name: str,
     request: UpdateGraphRequest,
@@ -1821,7 +1769,6 @@ async def generate_cloud_uri(
 
 
 @app.post("/folders/{folder_id}/set_rule")
-@telemetry.track(operation_type="set_folder_rule", metadata_resolver=telemetry.set_folder_rule_metadata)
 async def set_folder_rule(
     folder_id: str,
     request: SetFolderRuleRequest,

@@ -13,10 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
-import requests
 from opentelemetry import metrics, trace
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import (
     AggregationTemporality,
@@ -28,47 +25,19 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Status, StatusCode
-from urllib3.exceptions import ProtocolError, ReadTimeoutError
 
 from core.config import get_settings
 
 # Get settings from config
 settings = get_settings()
 
-# Telemetry configuration - use settings directly from TOML
+# Telemetry configuration - FORCE OFFLINE MODE
 TELEMETRY_ENABLED = settings.TELEMETRY_ENABLED
-HONEYCOMB_ENABLED = settings.HONEYCOMB_ENABLED
-
-# Honeycomb configuration - using proxy to avoid exposing API key in code
-# Default to localhost:8080 for the proxy, but allow override from settings
-HONEYCOMB_PROXY_ENDPOINT = getattr(settings, "HONEYCOMB_PROXY_ENDPOINT", "https://otel-proxy.onrender.com")
-HONEYCOMB_PROXY_ENDPOINT = (
-    HONEYCOMB_PROXY_ENDPOINT
-    if isinstance(HONEYCOMB_PROXY_ENDPOINT, str) and len(HONEYCOMB_PROXY_ENDPOINT) > 0
-    else "https://otel-proxy.onrender.com"
-)
+HONEYCOMB_ENABLED = False  # Force disable honeycomb
 SERVICE_NAME = settings.SERVICE_NAME
 
-# Headers for OTLP - no API key needed as the proxy will add it
-OTLP_HEADERS = {"Content-Type": "application/x-protobuf"}
-
-# Configure timeouts and retries directly from TOML config
-OTLP_TIMEOUT = settings.OTLP_TIMEOUT
-OTLP_MAX_RETRIES = settings.OTLP_MAX_RETRIES
-OTLP_RETRY_DELAY = settings.OTLP_RETRY_DELAY
-OTLP_MAX_EXPORT_BATCH_SIZE = settings.OTLP_MAX_EXPORT_BATCH_SIZE
-OTLP_SCHEDULE_DELAY_MILLIS = settings.OTLP_SCHEDULE_DELAY_MILLIS
-OTLP_MAX_QUEUE_SIZE = settings.OTLP_MAX_QUEUE_SIZE
-
-# OTLP endpoints - using our proxy instead of direct Honeycomb connection
-OTLP_TRACES_ENDPOINT = f"{HONEYCOMB_PROXY_ENDPOINT}/v1/traces"
-OTLP_METRICS_ENDPOINT = f"{HONEYCOMB_PROXY_ENDPOINT}/v1/metrics"
-
-# Enable debug logging for OpenTelemetry
-os.environ["OTEL_PYTHON_LOGGING_LEVEL"] = "INFO"  # Changed from DEBUG to reduce verbosity
-# Add export protocol setting if not already set
-if not os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL"):
-    os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
+# Type variable for function return type
+T = TypeVar("T")
 
 
 def get_installation_id() -> str:
@@ -209,118 +178,6 @@ class FileMetricExporter(MetricExporter):
         return {}
 
 
-class RetryingOTLPMetricExporter(MetricExporter):
-    """A wrapper around OTLPMetricExporter that adds better retry logic."""
-
-    def __init__(self, endpoint, headers=None, timeout=10):
-        self.exporter = OTLPMetricExporter(endpoint=endpoint, headers=headers, timeout=timeout)
-        self.max_retries = OTLP_MAX_RETRIES
-        self.retry_delay = OTLP_RETRY_DELAY
-        self.logger = logging.getLogger(__name__)
-        super().__init__()
-
-    def export(self, metrics_data, **kwargs):
-        """Export metrics with retry logic for handling connection issues."""
-        retries = 0
-
-        while retries <= self.max_retries:
-            try:
-                return self.exporter.export(metrics_data, **kwargs)
-            except (
-                requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout,
-                ProtocolError,
-                ReadTimeoutError,
-            ):
-                retries += 1
-
-                if retries <= self.max_retries:
-                    # Use exponential backoff
-                    delay = self.retry_delay * (2 ** (retries - 1))
-                    # self.logger.warning(
-                    #     f"Honeycomb export attempt {retries} failed: {str(e)}. "
-                    #     f"Retrying in {delay}s..."
-                    # )
-                    time.sleep(delay)
-                # else:
-                # self.logger.error(
-                #     f"Failed to export to Honeycomb after {retries} attempts: {str(e)}"
-                # )
-            except Exception:
-                # For non-connection errors, don't retry
-                # self.logger.error(f"Unexpected error exporting to Honeycomb: {str(e)}")
-                return False
-
-        # If we get here, all retries failed
-        return False
-
-    def shutdown(self, timeout_millis=30000, **kwargs):
-        """Shutdown the exporter."""
-        return self.exporter.shutdown(timeout_millis, **kwargs)
-
-    def force_flush(self, timeout_millis=10000):
-        """Force flush the exporter."""
-        return self.exporter.force_flush(timeout_millis)
-
-    def _preferred_temporality(self):
-        """Returns the preferred temporality."""
-        return self.exporter._preferred_temporality()
-
-
-class RetryingOTLPSpanExporter:
-    """A wrapper around OTLPSpanExporter that adds better retry logic."""
-
-    def __init__(self, endpoint, headers=None, timeout=10):
-        self.exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers, timeout=timeout)
-        self.max_retries = OTLP_MAX_RETRIES
-        self.retry_delay = OTLP_RETRY_DELAY
-        self.logger = logging.getLogger(__name__)
-
-    def export(self, spans):
-        """Export spans with retry logic for handling connection issues."""
-        retries = 0
-
-        while retries <= self.max_retries:
-            try:
-                return self.exporter.export(spans)
-            except (
-                requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout,
-                ProtocolError,
-                ReadTimeoutError,
-            ) as e:
-                retries += 1
-
-                if retries <= self.max_retries:
-                    # Use exponential backoff
-                    delay = self.retry_delay * (2 ** (retries - 1))
-                    self.logger.warning(
-                        f"Honeycomb trace export attempt {retries} failed: {str(e)}. " f"Retrying in {delay}s..."
-                    )
-                    time.sleep(delay)
-                else:
-                    self.logger.error(f"Failed to export traces to Honeycomb after {retries} attempts: {str(e)}")
-            except Exception as e:
-                # For non-connection errors, don't retry
-                self.logger.error(f"Unexpected error exporting traces to Honeycomb: {str(e)}")
-                return False
-
-        # If we get here, all retries failed
-        return False
-
-    def shutdown(self):
-        """Shutdown the exporter."""
-        return self.exporter.shutdown()
-
-    def force_flush(self):
-        """Force flush the exporter."""
-        try:
-            return self.exporter.force_flush()
-        except Exception as e:
-            self.logger.error(f"Error during trace force_flush: {str(e)}")
-            return False
-
-
 @dataclass
 class UsageRecord:
     timestamp: datetime
@@ -330,10 +187,6 @@ class UsageRecord:
     duration_ms: float
     status: str
     metadata: Optional[Dict] = None
-
-
-# Type variable for function return type
-T = TypeVar("T")
 
 
 class MetadataField:
@@ -471,10 +324,10 @@ class TelemetryService:
             }
         )
 
-        # Initialize tracing with both file and OTLP exporters
+        # Initialize tracing with ONLY file exporter
         tracer_provider = TracerProvider(resource=resource)
 
-        # Always use both exporters
+        # Setup log directory
         log_dir = Path("logs/telemetry")
         log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -482,26 +335,10 @@ class TelemetryService:
         file_span_processor = BatchSpanProcessor(FileSpanExporter(str(log_dir)))
         tracer_provider.add_span_processor(file_span_processor)
 
-        # Add Honeycomb OTLP exporter with retry logic
-        if HONEYCOMB_ENABLED:
-            # Create BatchSpanProcessor with improved configuration
-            otlp_span_processor = BatchSpanProcessor(
-                RetryingOTLPSpanExporter(
-                    endpoint=OTLP_TRACES_ENDPOINT,
-                    headers=OTLP_HEADERS,
-                    timeout=OTLP_TIMEOUT,
-                ),
-                # Configure batch processing settings
-                max_queue_size=OTLP_MAX_QUEUE_SIZE,
-                max_export_batch_size=OTLP_MAX_EXPORT_BATCH_SIZE,
-                schedule_delay_millis=OTLP_SCHEDULE_DELAY_MILLIS,
-            )
-            tracer_provider.add_span_processor(otlp_span_processor)
-
         trace.set_tracer_provider(tracer_provider)
         self.tracer = trace.get_tracer(__name__)
 
-        # Initialize metrics with both exporters
+        # Initialize metrics with ONLY file exporter
         metric_readers = [
             # Local file metrics reader
             PeriodicExportingMetricReader(
@@ -509,27 +346,6 @@ class TelemetryService:
                 export_interval_millis=60000,  # Export every minute
             ),
         ]
-
-        # Add Honeycomb metrics reader if API key is available
-        if HONEYCOMB_ENABLED:
-            try:
-                # Configure the OTLP metric exporter with improved error handling
-                otlp_metric_exporter = RetryingOTLPMetricExporter(
-                    endpoint=OTLP_METRICS_ENDPOINT,
-                    headers=OTLP_HEADERS,
-                    timeout=OTLP_TIMEOUT,
-                )
-
-                # Configure the metrics reader with improved settings
-                metric_readers.append(
-                    PeriodicExportingMetricReader(
-                        otlp_metric_exporter,
-                        export_interval_millis=OTLP_SCHEDULE_DELAY_MILLIS,
-                        export_timeout_millis=OTLP_TIMEOUT * 1000,
-                    )
-                )
-            except Exception as e:
-                print(f"Failed to configure Honeycomb metrics exporter: {str(e)}")
 
         meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers)
         metrics.set_meter_provider(meter_provider)
@@ -552,6 +368,9 @@ class TelemetryService:
 
         # Initialize metadata extractors
         self._setup_metadata_extractors()
+
+        # Log initialization
+        logging.getLogger(__name__).info("Telemetry Service initialized in OFFLINE mode")
 
     def _setup_metadata_extractors(self):
         """Set up all the metadata extractors with their field definitions."""
