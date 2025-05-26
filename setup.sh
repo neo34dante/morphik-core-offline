@@ -1,34 +1,71 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 0. Prepare keyrings directory
+sudo mkdir -p /etc/apt/keyrings
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. NVIDIA CUDA repository (Ubuntu 24.04)
+curl -fsSL \
+  https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404-keyring.gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/cuda-archive-keyring.gpg
+
+echo \
+  "deb [signed-by=/etc/apt/keyrings/cuda-archive-keyring.gpg] \
+   https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/ /" \
+  | sudo tee /etc/apt/sources.list.d/cuda.list
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Google Chrome
 wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
   | sudo gpg --dearmor -o /etc/apt/keyrings/google-linux-signing-keyring.gpg
+
 echo \
   "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux-signing-keyring.gpg] \
    http://dl.google.com/linux/chrome/deb/ stable main" \
   | sudo tee /etc/apt/sources.list.d/google-chrome.list
 
-# NVIDIA Container Toolkit (docker runtime)
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. NVIDIA Container Toolkit (for Docker)
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
   | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
 curl -sL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
   | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' \
   | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-# PostgreSQL 17 + pgvector
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. PostgreSQL 17 + pgvector
 curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/pgdg-keyring.gpg
+
 echo \
   "deb [signed-by=/etc/apt/keyrings/pgdg-keyring.gpg] \
    http://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
   | sudo tee /etc/apt/sources.list.d/pgdg.list
 
-# 1. System update & core dependencies
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Update & upgrade core OS packages
 sudo apt update && sudo apt -y upgrade
-# 2. Install every package listed in apt-manual.txt
-xargs -a apt-manual.txt sudo apt install -y
 
-# 2. Ollama model pulls
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Install your manual APT list (skipping missing ones)
+echo "🔍 Installing APT packages from apt-manual.txt" 
+while IFS= read -r pkg; do
+  # skip blanks and comments
+  [[ -z "$pkg" || "$pkg" == \#* ]] && continue
+
+  if apt-cache show "$pkg" > /dev/null 2>&1; then
+    echo "✔️  $pkg"
+    sudo apt install -y "$pkg"
+  else
+    echo "⚠️  skipping unavailable: $pkg"
+  fi
+done < apt-manual.txt  # :contentReference[oaicite:0]{index=0}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Ollama model pulls
 if ! command -v ollama &>/dev/null; then
   curl -fsSL https://ollama.com/install.sh | sh
 fi
@@ -36,71 +73,46 @@ ollama pull llama3.2
 ollama pull gemma3
 ollama pull nomic-embed-text
 
-# 3. Docker Redis
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Docker Redis
 docker pull redis:7.2.3-alpine
 
-# 4. Python 3.11 virtualenv setup
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Python 3.11 virtualenv
 python3.11 -m venv .venv
 # shellcheck source=/dev/null
 source .venv/bin/activate
 
-# 5. Hugging Face authentication & model downloads
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. Hugging Face & model downloads
 pip install --upgrade pip setuptools wheel
 pip install huggingface_hub
 
-if [ -z "${HF_API_TOKEN:-}" ]; then
-  echo "⚠️  HF_API_TOKEN not set; skipping Hugging Face model downloads."
-else
+if [ -n "${HF_API_TOKEN:-}" ]; then
   huggingface-cli login --token "$HF_API_TOKEN"
 
   echo "⏬ Downloading local_models…"
-
   python3 - <<'PYCODE'
 import os
 from huggingface_hub import snapshot_download
-
 token = os.getenv("HF_API_TOKEN")
 
-# 5.1 ColSmol-256M
-print("⬇️  vidore/colSmol-256M → local_models/colSmol-256M")
-snapshot_download(
-    repo_id="vidore/colSmol-256M",
-    local_dir="local_models/colSmol-256M",
-    token=token,
-    resume_download=True
-)
-
-# 5.2 ColQwen2.5 (adapter + base) — equivalent to download_colpali_full.py :contentReference[oaicite:0]{index=0}
-print("⬇️  tsystems/colqwen2.5-3b-multilingual-v1.0 → local_models/colqwen2.5-3b-multilingual-v1.0")
-snapshot_download(
-    repo_id="tsystems/colqwen2.5-3b-multilingual-v1.0",
-    local_dir="local_models/colqwen2.5-3b-multilingual-v1.0",
-    token=token,
-    resume_download=True
-)
-
-# 5.3 OPT-1.3B base model
-print("⬇️  facebook/opt-1.3b → local_models/opt-1.3b")
-snapshot_download(
-    repo_id="facebook/opt-1.3b",
-    local_dir="local_models/opt-1.3b",
-    token=token,
-    resume_download=True
-)
-
-# 5.4 BGE Reranker — equivalent to download_reranker.py :contentReference[oaicite:1]{index=1}
-print("⬇️  BAAI/bge-reranker-large → local_models/reranker/BAAI_bge-reranker-large")
-snapshot_download(
-    repo_id="BAAI/bge-reranker-large",
-    local_dir="local_models/reranker/BAAI_bge-reranker-large",
-    token=token,
-    resume_download=True
-)
+for repo, path in [
+    ("vidore/colSmol-256M", "local_models/colSmol-256M"),
+    ("tsystems/colqwen2.5-3b-multilingual-v1.0", "local_models/colqwen2.5-3b-multilingual-v1.0"),
+    ("facebook/opt-1.3b", "local_models/opt-1.3b"),
+    ("BAAI/bge-reranker-large", "local_models/reranker/BAAI_bge-reranker-large"),
+]:
+    print(f"⬇️  {repo} → {path}")
+    snapshot_download(repo_id=repo, local_dir=path, token=token, resume_download=True)
 PYCODE
 
+else
+  echo "⚠️  HF_API_TOKEN not set; skipping model downloads."
 fi
 
-# 6. Install Python dependencies
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. Python requirements
 pip install -r requirements.txt --use-deprecated=legacy-resolver
 
-echo "✔️  Setup complete!  Activate with: source .venv/bin/activate"
+echo "✔️  Setup complete! Activate with: source .venv/bin/activate"
