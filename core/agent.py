@@ -324,6 +324,8 @@ Current default graph: {self.default_graph or "None"}""".strip()
                         )
                         combined_content.extend(vec_content)
                         combined_sources.update(vec_sources)
+                        source_map.update(combined_sources)
+                        return json.dumps(combined_content, ensure_ascii=False)
                     except Exception as e:  # pragma: no cover
                         logger.error(f"Vector search failed: {e}")
                         if not combined_content:
