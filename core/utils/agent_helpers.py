@@ -7,6 +7,14 @@ import logging
 # Disable any network calls for Google GenAI and HF Hub
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
+# Transformers no longer respects TRANSFORMERS_CACHE; use HF_HOME instead
+cache_dir = os.environ.get("TRANSFORMERS_CACHE")
+if cache_dir:
+    os.environ.setdefault("HF_HOME", cache_dir)
+else:
+    os.environ.setdefault(
+        "HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+    )
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .chat import ChatMessage
 
@@ -38,3 +38,4 @@ class CompletionRequest(BaseModel):
     end_user_id: Optional[str] = None
     schema: Optional[Union[Type[BaseModel], Dict[str, Any]]] = None
     chat_history: Optional[List[ChatMessage]] = None
+    model_config = ConfigDict(protected_namespaces=("model_",))

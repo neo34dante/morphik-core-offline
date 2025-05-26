@@ -3,6 +3,13 @@ import os
 # (Optional) double-secure against any accidental Hub calls
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+cache_dir = os.environ.get("TRANSFORMERS_CACHE")
+if cache_dir:
+    os.environ.setdefault("HF_HOME", cache_dir)
+else:
+    os.environ.setdefault(
+        "HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+    )
 import io
 import logging
 import time
@@ -38,7 +45,13 @@ class ColpaliEmbeddingModel(BaseEmbeddingModel):
         self.processor: ColQwen2_5_Processor = ColQwen2_5_Processor.from_pretrained(
             path,
             local_files_only=True,
+            use_fast=True,
         )
+        if hasattr(self.processor, "config"):
+            try:
+                self.processor.config.pop("max_num_visual_tokens", None)
+            except AttributeError:
+                delattr(self.processor.config, "max_num_visual_tokens")
         self.settings = get_settings()
         self.mode = self.settings.MODE
         # Set batch size based on mode

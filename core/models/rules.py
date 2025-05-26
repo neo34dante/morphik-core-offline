@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Literal, Optional
 
 import litellm
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from core.config import get_settings
 
@@ -44,6 +44,8 @@ class MetadataExtractionRule(BaseRule):
     type: Literal["metadata_extraction"]
     schema: Dict[str, Any]
     use_images: bool = False
+
+    model_config = ConfigDict(protected_namespaces=("model_",))
 
     async def apply(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> tuple[Dict[str, Any], str]:
         """Extract metadata according to schema"""

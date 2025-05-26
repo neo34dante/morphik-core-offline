@@ -39,6 +39,7 @@ from core.storage.base_storage import BaseStorage
 from core.vector_store.base_vector_store import BaseVectorStore
 from core.vector_store.multi_vector_store import MultiVectorStore
 from core.utils.model_loader import local_model_path
+from core.utils.location_links import append_map_links
 
 from ..models.auth import AuthContext
 from ..models.folders import Folder
@@ -569,6 +570,11 @@ class DocumentService:
         )
 
         response = await self.completion_model.complete(request)
+
+        # Optionally append map links if enabled and completion is text
+        settings = get_settings()
+        if isinstance(response.completion, str) and getattr(settings, "ENABLE_LOCATION_LINKS", False):
+            response.completion = append_map_links(response.completion)
 
         # Add sources information at the document service level
         response.sources = sources

@@ -122,10 +122,11 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
 
     # Telemetry configuration
-    TELEMETRY_ENABLED: bool = True
-    HONEYCOMB_ENABLED: bool = True
-    HONEYCOMB_ENDPOINT: str = "https://api.honeycomb.io"
-    HONEYCOMB_PROXY_ENDPOINT: str = "https://otel-proxy.onrender.com/"
+    TELEMETRY_ENABLED: bool = False
+    HONEYCOMB_ENABLED: bool = False
+    HONEYCOMB_ENDPOINT: str = ""
+    HONEYCOMB_PROXY_ENDPOINT: str = ""
+    ENABLE_LOCATION_LINKS: bool = False
     SERVICE_NAME: str = "morphik-core"
     OTLP_TIMEOUT: int = 10
     OTLP_MAX_RETRIES: int = 3
@@ -314,6 +315,7 @@ def get_settings() -> Settings:
         "MORPHIK_EMBEDDING_API_DOMAIN": config["morphik"].get(
             "morphik_embedding_api_domain", config["morphik"].get("api_domain", "api.morphik.ai")
         ),
+        "ENABLE_LOCATION_LINKS": config["morphik"].get("enable_location_links", False),
     }
 
     # load redis config

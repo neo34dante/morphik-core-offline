@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Type, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from core.models.documents import Document
 from core.models.prompts import GraphPromptOverrides, QueryPromptOverrides
@@ -41,6 +41,7 @@ class CompletionQueryRequest(RetrieveRequest):
         description="Schema for structured output, can be a Pydantic model or JSON schema dict",
     )
 
+    model_config = ConfigDict(protected_namespaces=("model_",))
 
 class IngestTextRequest(BaseModel):
     """Request model for ingesting text content"""
@@ -132,6 +133,7 @@ class MetadataExtractionRuleRequest(BaseModel):
     type: str = "metadata_extraction"  # Only metadata_extraction supported for now
     schema: Dict[str, Any]
 
+    model_config = ConfigDict(protected_namespaces=("model_",))
 
 class SetFolderRuleRequest(BaseModel):
     """Request model for setting folder rules"""
