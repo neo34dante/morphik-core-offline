@@ -5,7 +5,7 @@ from typing import Dict, Set, Any
 
 from dotenv import load_dotenv
 from litellm import acompletion
-from litellm.exceptions import ContextWindowExceededError
+from litellm.exceptions import ContextWindowExceededError, APIConnectionError
 
 from core.config import get_settings
 from core.models.auth import AuthContext
@@ -222,6 +222,11 @@ Current default graph: {self.default_graph or "None"}""".strip()
         
         # Clean arguments first
         args = self._clean_tool_args(args)
+
+        # Some models may prefix tool names with roles like "system:" or "assistant:".
+        # Strip any such prefixes to match the actual implemented tool names.
+        if ":" in name:
+            name = name.split(":", 1)[-1].strip()
         
         logger.info(f"Executing tool: {name} with cleaned args: {args}")
         
@@ -412,12 +417,12 @@ Current default graph: {self.default_graph or "None"}""".strip()
         
         # Handle graph switching
         import re
-        m = re.search(r"use\s+knowledge\s+base\s*[:=]\s*(\w+)", query, re.IGNORECASE)
+        m = re.search(r"use\s+knowledge\s+base\s*[:=]\s*([\w\-]+)", query, re.IGNORECASE)
         if m:
             new_graph = m.group(1)
             self.default_graph = new_graph
             query = re.sub(
-                r"use\s+knowledge\s+base\s*[:=]\s*\w+",
+                r"use\s+knowledge\s+base\s*[:=]\s*[\w\-]+",
                 "",
                 query,
                 flags=re.IGNORECASE,
@@ -495,6 +500,12 @@ Current default graph: {self.default_graph or "None"}""".strip()
             except ContextWindowExceededError as e:
                 logger.error("Context window exceeded")
                 self.conversation_history = self.conversation_history[-6:]
+                raise e
+            except APIConnectionError as e:
+                logger.error(f"API connection error: {e}")
+                if iteration < max_iterations:
+                    logger.info("Retrying completion due to connection error")
+                    continue
                 raise e
             except Exception as e:
                 logger.error(f"Error in completion: {e}")
