@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring.gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/cuda-archive-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/cuda-archive-keyring.gpg] \
-  https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/ /" \
-  | sudo tee /etc/apt/sources.list.d/cuda.list
-
-# Add Google Chrome repo
-curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
   | sudo gpg --dearmor -o /etc/apt/keyrings/google-linux-signing-keyring.gpg
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux-signing-keyring.gpg] \
-  http://dl.google.com/linux/chrome/deb/ stable main" \
+echo \
+  "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux-signing-keyring.gpg] \
+   http://dl.google.com/linux/chrome/deb/ stable main" \
   | sudo tee /etc/apt/sources.list.d/google-chrome.list
 
-# Add PostgreSQL 17 (if you really need it)
+# NVIDIA Container Toolkit (docker runtime)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -sL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# PostgreSQL 17 + pgvector
 curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/pgdg-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/pgdg-keyring.gpg] \
-  http://apt.postgresql.org/pub/repos/apt/ noble-pgdg main" \
+echo \
+  "deb [signed-by=/etc/apt/keyrings/pgdg-keyring.gpg] \
+   http://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
   | sudo tee /etc/apt/sources.list.d/pgdg.list
 
 # 1. System update & core dependencies
