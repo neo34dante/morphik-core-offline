@@ -95,29 +95,6 @@ class MorphikAgent:
         logger.info(f"Loaded {len(self.tool_definitions)} tool definitions for LLM")
         # Enhanced system prompt with clearer instructions
         tool_descriptions = [f"- {tool['name']}: {tool['description']}" for tool in self.tools_json]
-        
-        for tool in all_tools_json:
-            tool_name = tool.get("name", "")
-            if tool_name in self.implemented_tools:
-                self.tools_json.append(tool)
-            else:
-                skipped_tools.append(tool_name)
-         
-        if skipped_tools:
-             logger.warning(
-                f"Skipping {len(skipped_tools)} unimplemented tools from descriptions.json: {', '.join(skipped_tools)}"
-            )
-        # Build tool definitions for LLM
-        self.tool_definitions = []
-        for tool in self.tools_json:
-            self.tool_definitions.append({
-                "name": tool["name"],
-                "description": tool["description"],
-                "parameters": tool["input_schema"],
-            })
-        logger.info(f"Loaded {len(self.tool_definitions)} tool definitions for LLM")
-        # Enhanced system prompt with clearer instructions
-        tool_descriptions = [f"- {tool['name']}: {tool['description']}" for tool in self.tools_json]
          
         self.system_prompt = f"""
 You are Dante, a research assistant. 
@@ -180,23 +157,46 @@ Current default graph: {self.default_graph or "None"}""".strip()
             
         return cleaned
         
-    def _requires_tool_usage(self, query: str) -> bool:
-        """Determine if a query requires tool usage."""
+    def _is_personal_question(self, query: str) -> bool:
+        """Return True if the query is asking about the agent or past conversation."""
         query_lower = query.lower()
         
         # Personal questions that don't need tools
         personal_patterns = [
-            "who are you", "what are you", "what can you do",
-            "how do you work", "your capabilities", "your functions",
-            "you said", "you told me", "i told you", "did i tell you", "you mentioned",
-            "we discussed", "we talked", "we spoke", "did we discuss", "my previous question", "previous conversation",
-            "earlier you said", "remember when"
+            "who are you",
+            "what are you",
+            "what can you do",
+            "how do you work",
+            "your capabilities",
+            "your functions",
+            "you said",
+            "you told me",
+            "i told you",
+            "did i tell you",
+            "you mentioned",
+            "we discussed",
+            "we talked",
+            "we spoke",
+            "did we discuss",
+            "my previous question",
+            "previous conversation",
+            "earlier you said",
+            "remember when",
         ]
         
         # Check if it's a personal question
         for pattern in personal_patterns:
             if pattern in query_lower:
-                return False
+                                return True
+
+        return False
+
+    def _requires_tool_usage(self, query: str) -> bool:
+        """Determine if a query requires tool usage."""
+        query_lower = query.lower()
+
+        if self._is_personal_question(query):
+            return False
         
         # Data retrieval indicators that REQUIRE tools
         data_indicators = [
@@ -216,6 +216,25 @@ Current default graph: {self.default_graph or "None"}""".strip()
             return True
                 
         return False
+    
+    def _personal_response(self) -> Dict[str, Any]:
+        """Return a standard response describing the agent."""
+        text = (
+            "I'm Dante, a research assistant designed to help explore and "
+            "analyze your knowledge base using various tools."
+        )
+        return {
+            "response": text,
+            "tool_history": [],
+            "display_objects": [
+                {
+                    "type": "text",
+                    "content": text,
+                    "source": "agent-response",
+                }
+            ],
+            "sources": [],
+        }
 
     async def _execute_tool(self, name: str, args: dict, auth: AuthContext, source_map: dict):
         """Dispatch tool calls, injecting document_service and auth."""
@@ -445,9 +464,15 @@ Current default graph: {self.default_graph or "None"}""".strip()
         # Add to conversation history
         self.conversation_history.append({"role": "user", "content": query})
         
-        # Check if query requires tool usage
+        # Determine if this is a personal question and if tools are needed
+        is_personal = self._is_personal_question(query)
         requires_tools = self._requires_tool_usage(query)
         logger.info(f"Query requires tools: {requires_tools}")
+
+        if is_personal and not requires_tools:
+            response = self._personal_response()
+            self.conversation_history.append({"role": "assistant", "content": response["response"]})
+            return response
         
         # Per-run state
         source_map: dict = {}
@@ -570,7 +595,7 @@ Current default graph: {self.default_graph or "None"}""".strip()
                 })
                 
                 # After getting some results, check if we should synthesize
-                if made_tool_call and tool_history and iteration >= 3:
+                if made_tool_call and tool_history and iteration >= 2:
                     # Check if we have any meaningful results
                     has_results = any(
                         "Found" in str(h.get("tool_result", "")) and "Found 0" not in str(h.get("tool_result", ""))
@@ -696,10 +721,12 @@ Current default graph: {self.default_graph or "None"}""".strip()
         }
 
     def _synthesize_tool_results(self, tool_history: list, query: str) -> str:
-        """Synthesize a response from tool results."""
-        content_parts = []
-        
-        # Check what tools were used and what they found
+        """Create a short summary of tool outputs."""
+        MAX_SNIPPETS = 3
+        snippets = []
+        other_messages = []
+
+        # Examine tool outputs
         for hist in tool_history:
             tool_name = hist.get("tool_name", "")
             result_str = hist.get("tool_result", "")
@@ -708,45 +735,65 @@ Current default graph: {self.default_graph or "None"}""".strip()
                 if tool_name == "retrieve_chunks":
                     result_data = json.loads(result_str)
                     if isinstance(result_data, list):
-                        chunk_count = len([item for item in result_data if item.get("type") == "text" and "Found" not in item.get("text", "")])
-                        if chunk_count > 0:
-                            content_parts.append(f"I found {chunk_count} relevant chunks in the knowledge base.")
-                            # Extract actual content
-                            for item in result_data:
-                                if item.get("type") == "text" and "Document:" in item.get("text", ""):
-                                    text = item.get("text", "")
-                                    # Extract content after metadata
-                                    if "\n\n" in text:
-                                        actual_content = text.split("\n\n", 1)[1]
-                                        content_parts.append(actual_content[:500] + "...")
-                        else:
-                            content_parts.append("No relevant chunks were found in the vector search.")
-                
+                        for item in result_data:
+                            if (
+                                item.get("type") == "text"
+                                and "Document:" in item.get("text", "")
+                            ):
+                                text = item.get("text", "")
+                                if "\n\n" in text:
+                                    text = text.split("\n\n", 1)[1]
+                                text = text.strip().replace("\n", " ")
+                                snippet = text[:150]
+                                if len(text) > 150:
+                                    snippet += "..."
+                                snippets.append(snippet)
+                                if len(snippets) >= MAX_SNIPPETS:
+                                    break
+                    if not snippets:
+                        other_messages.append(
+                            "No relevant chunks were found in the vector search."
+                        )
+
                 elif tool_name == "knowledge_graph_query":
                     if "not found" in result_str.lower() or "error" in result_str.lower():
-                        content_parts.append("The knowledge graph query encountered an error.")
+                        other_messages.append(
+                            "The knowledge graph query encountered an error."
+                        )
                     else:
                         result_data = json.loads(result_str)
                         if "graph_results" in result_data:
-                            content_parts.append("Found information in the knowledge graph.")
+                            other_messages.append(
+                                "Found information in the knowledge graph."
+                            )
                 
                 elif tool_name == "list_documents":
                     if "error" in result_str.lower():
-                        content_parts.append("Could not list documents due to an error.")
+                        other_messages.append(
+                            "Could not list documents due to an error."
+                        )
                     else:
                         result_data = json.loads(result_str)
                         doc_count = result_data.get("count", 0)
-                        content_parts.append(f"There are {doc_count} documents in the knowledge base.")
+                        other_messages.append(
+                            f"There are {doc_count} documents in the knowledge base."
+                        )
                         
             except Exception as e:
                 logger.warning(f"Error parsing tool result: {e}")
-        
-        # If no meaningful content found
-        if not content_parts or all("No relevant" in part or "error" in part.lower() for part in content_parts):
-            return f"I searched for information about '{query}' but couldn't find specific details in the knowledge base. The search may have encountered some technical issues or the information might not be available in the current database."
-        
-        # Combine the parts into a coherent response
-        return "Based on my search:\n\n" + "\n\n".join(content_parts)
+
+        if not snippets and not other_messages:
+            return (
+                f"I searched for information about '{query}' but couldn't find specific details "
+                "in the knowledge base."
+            )
+
+        bullet_lines = [f"- {s}" for s in snippets[:MAX_SNIPPETS]]
+        bullet_lines.extend(f"- {m}" for m in other_messages)
+
+        return "Here is a brief summary of the tool results:\n" + "\n".join(
+            bullet_lines
+        )
         
     def stream(self, query: str):
         """Streaming stub - not implemented."""
