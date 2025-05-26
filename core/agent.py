@@ -96,47 +96,64 @@ class MorphikAgent:
         # Enhanced system prompt with clearer instructions
         tool_descriptions = [f"- {tool['name']}: {tool['description']}" for tool in self.tools_json]
         
+        for tool in all_tools_json:
+            tool_name = tool.get("name", "")
+            if tool_name in self.implemented_tools:
+                self.tools_json.append(tool)
+            else:
+                skipped_tools.append(tool_name)
+         
+        if skipped_tools:
+             logger.warning(
+                f"Skipping {len(skipped_tools)} unimplemented tools from descriptions.json: {', '.join(skipped_tools)}"
+            )
+        # Build tool definitions for LLM
+        self.tool_definitions = []
+        for tool in self.tools_json:
+            self.tool_definitions.append({
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            })
+        logger.info(f"Loaded {len(self.tool_definitions)} tool definitions for LLM")
+        # Enhanced system prompt with clearer instructions
+        tool_descriptions = [f"- {tool['name']}: {tool['description']}" for tool in self.tools_json]
+         
         self.system_prompt = f"""
-You are Dante, an intelligent research assistant with access to a knowledge base and various analytical tools.
-
-CRITICAL INSTRUCTIONS:
-1. For personal questions about yourself or contextual queries referencing the conversation or user-provided information: Answer directly using memory (conversation history or saved notes) without using tools.
-2. For topic-specific questions requiring information (e.g., about Dante or other subjects): If a knowledge graph is available, use the knowledge_graph_query tool first to find relevant entities or relationships. If graph results are insufficient or not available, use the retrieve_chunks tool to perform a vector search in the knowledge base. Gather information from these tools before formulating your answer.
-3. If the tools return no relevant information, acknowledge this in your answer and provide any helpful general knowledge you might have on the topic.
-
-TOOL USAGE RULES:
-- Use retrieve_chunks for searching content by query (semantic similarity).
-- Use knowledge_graph_query to leverage the knowledge graph for connected information. For example, use query_type="list_entities" with a keyword to find related entities, then query_type="entity" or "subgraph" with specific entity IDs or labels to get details or context. Provide start_nodes as a JSON array of strings (e.g., ["EntityName"]) and specify max_depth for deeper exploration if needed. You typically do not need to set graph_name unless switching from the default.
-- Use list_documents to see available documents (IDs and names).
-- The document_analyzer tool requires a valid document_id (from list_documents) and an analysis_type (one of "entity_extraction", "summarization", "fact_extraction", "sentiment", "full"). Do not use concept names in place of document IDs.
-- Only use the tools listed above in Available tools. Do not attempt to call any undefined or unimplemented functions (e.g., do not use tools named "function_name" or "describe").
-- If no results are found by a tool (or the tool output indicates nothing relevant), communicate that and adjust your strategy (try a different tool or inform the user).
-
-IMPORTANT ARGUMENT RULES:
-- Never pass the string "null" or "None" as a value in tool arguments. Omit optional parameters instead of using null/None strings.
-- For numeric parameters like k, skip, limit, max_depth, use actual numbers (integers or floats) rather than strings.
-- For list parameters, provide a JSON array. (For example, start_nodes should be ["node1", "node2"] not "node1, node2".)
-- The document_id for retrieve_document or document_analyzer must be an exact ID obtained from list_documents, not a general name or concept.
-
-Available tools:
-{chr(10).join(tool_descriptions)}
-
-After gathering information with tools (even if some tools return no results), ALWAYS provide a final response to the user in the form of a JSON array of display objects. For example:
+You are Dante, a research assistant. 
+You should use tools to retrieve more context about the user query.
+ 
+WORKFLOW:
+1. Detect main entities or keywords in the user request.
+2. Call knowledge_graph_query with query_type="list_entities" and those keywords.
+3. For each entity returned, call knowledge_graph_query with query_type="entity" or "subgraph" to obtain document_ids.
+4. Call retrieve_chunks with the collected document_ids to gather text **before** responding. Only skip tools when the user asks about you or prior conversation, in which case reply from memory.
+ 
+TOOL GUIDELINES:
+- Use only the tools listed below. Do not call undefined functions.
+- Provide integers for numeric parameters and JSON arrays for lists. Never pass "null" or "None" strings.
+- list_documents can show available documents if needed.
+ 
+ Available tools:
+ {chr(10).join(tool_descriptions)}
+ 
+After gathering information with tools, ALWAYS provide a final response to the user in the form of a JSON array of display objects. For example:
 ```json
 [
   {{
     "type": "text",
-    "content": "Your complete answer here, with references to sources as needed.",
-    "source": "source-id or agent-response"
+    "content": "Your complete answer after referencing sources as needed.",
+    "source": "source-id of the referred document or agent-response"
   }}
 ]
-Ensure the answer is user-friendly and cites relevant sources by using the "source" field for each part of the answer (use the source_id for information taken from documents, or "agent-response" for your own explanatory content). Use context from the conversation and any stored memory in your answer when applicable. Current default graph: {self.default_graph or "None"}
-""".strip()
-
+Ensure the answer is user-friendly and cites relevant sources by using the "source" field for each part of the answer (use the source_id for information taken from documents, or "agent-response" for your own explanatory content). 
+Use context from the conversation and any stored memory in your answer when applicable. 
+Current default graph: {self.default_graph or "None"}""".strip()
+ 
     def _clean_tool_args(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Clean tool arguments from LLM to handle common issues."""
         cleaned = {}
-        
+         
         for key, value in args.items():
             # Handle string "null", "None", empty strings
             if isinstance(value, str):
@@ -150,12 +167,12 @@ Ensure the answer is user-friendly and cites relevant sources by using the "sour
                         continue
                     except ValueError:
                         pass
-                # Try to parse floats
+                 # Try to parse floats
                 if key in ["min_relevance"]:
-                    try:
+                     try:
                         cleaned[key] = float(value)
                         continue
-                    except ValueError:
+                     except ValueError:
                         pass
             
             # Keep the value as-is if no special handling needed
