@@ -27,23 +27,6 @@ sudo apt install -y postgresql-17 postgresql-contrib-17
 echo_msg "Installing pgvector extension"
 sudo apt install -y postgresql-17-pgvector
 
-# 4. Enable pgvector in PostgreSQL
-echo_msg "Enabling pgvector extension"
-sudo -u postgres psql -c "CREATE EXTENSION vector;"
-
-# 5. Start PostgreSQL service
-echo_msg "Starting PostgreSQL service"
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-
-# 6. Create Morphik database and user
-echo_msg "Creating Morphik database and user"
-sudo -u postgres psql <<EOF
-CREATE DATABASE morphik;
-CREATE USER morphik_user WITH PASSWORD 'morphik_pass';
-GRANT ALL PRIVILEGES ON DATABASE morphik TO morphik_user;
-EOF
-
 # 7. Install Ollama
 echo_msg "Installing Ollama"
 curl -fsSL https://ollama.com/install.sh | sh
