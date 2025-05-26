@@ -226,7 +226,7 @@ orjson==3.10.3
 packaging==24.0
 paddlepaddle==3.0.0rc0
 paddlex==3.0.0rc1
-pandas==1.5.3
+pandas
 parso==0.8.4
 passlib==1.7.4
 pathspec==0.12.1

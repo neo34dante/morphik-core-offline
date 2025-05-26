@@ -47,10 +47,3 @@ cp .env.local.example .env.local
 sed -i 's|^#*POSTGRES_URL=.*|POSTGRES_URL=postgresql://morphik_user:morphik_pass@localhost:5432/morphik|' .env.local
 sed -i 's|^#*OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=http://localhost:11434|' .env.local
 
-# 12. Initialize database schema
-echo_msg "Initializing database schema"
-python scripts/init_db.py
-
-# 13. Launch Morphik server
-echo_msg "Launching Morphik server"
-python start_server.py
