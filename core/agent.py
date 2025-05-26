@@ -143,7 +143,7 @@ After gathering information with tools, ALWAYS provide a final response to the u
   {{
     "type": "text",
     "content": "Your complete answer after referencing sources as needed.",
-    "source": "source-id of the referred document or agent-response"
+    "source": "source-id of the referred document or agent-response",
   }}
 ]
 Ensure the answer is user-friendly and cites relevant sources by using the "source" field for each part of the answer (use the source_id for information taken from documents, or "agent-response" for your own explanatory content). 
@@ -232,23 +232,27 @@ Current default graph: {self.default_graph or "None"}""".strip()
         
         try:
             match name:
+
                 case "retrieve_chunks":
                     # Enhanced retrieve_chunks with graph integration
                     query = args.get("query", "")
                     
-                    # First try knowledge graph if available
+                    combined_content = []
+                    combined_sources = {}
+
+                    # First try knowledge graph to discover related documents
                     if self.default_graph:
                         try:
                             # Search for entities in the graph
                             kg_args = {
                                 "query_type": "list_entities",
                                 "start_nodes": [query],
-                                "graph_name": self.default_graph
+                                "graph_name": self.default_graph,
                             }
                             kg_result = await knowledge_graph_query(
                                 document_service=self.document_service,
                                 auth=auth,
-                                **kg_args
+                                **kg_args,
                             )
                             
                             # Parse graph results
@@ -258,64 +262,71 @@ Current default graph: {self.default_graph or "None"}""".strip()
                                 logger.info(f"Found {len(kg_data)} entities in knowledge graph")
                                 
                                 # Get detailed information for top entities
-                                detailed_results = []
-                                for entity in kg_data[:3]:  # Top 3 entities
+                                doc_ids: set[str] = set()
+                                for entity in kg_data[:3]:
                                     try:
-                                        entity_detail = await knowledge_graph_query(
+                                        detail_str = await knowledge_graph_query(
                                             document_service=self.document_service,
                                             auth=auth,
                                             query_type="entity",
                                             start_nodes=[entity["id"]],
                                             graph_name=self.default_graph
                                         )
-                                        detailed_results.append({
-                                            "source": "knowledge_graph",
-                                            "entity": entity,
-                                            "details": json.loads(entity_detail)
-                                        })
-                                    except Exception as e:
+                                        detail = json.loads(detail_str)
+                                        doc_ids.update(detail.get("document_ids", []))
+                                    except Exception as e:  # pragma: no cover - best effort
                                         logger.warning(f"Failed to get entity details: {e}")
                                 
-                                # Also get subgraph for context if high similarity
-                                if kg_data[0].get("similarity_score", 0) > 0.7:
+                                if doc_ids:
+                                    graph_filters = args.get("filters", {}) or {}
+                                    if isinstance(graph_filters, str):
+                                        try:
+                                            graph_filters = json.loads(graph_filters)
+                                        except json.JSONDecodeError:
+                                            graph_filters = {}
+
+                                    existing = graph_filters.get("external_id")
+                                    if existing:
+                                        if isinstance(existing, list):
+                                            graph_filters["external_id"] = list(set(existing) | doc_ids)
+                                        else:
+                                            graph_filters["external_id"] = list(set([existing]) | doc_ids)
+                                    else:
+                                        graph_filters["external_id"] = list(doc_ids)
+
+                                    graph_args = {**args, "filters": graph_filters}
+
+
                                     try:
-                                        subgraph = await knowledge_graph_query(
+                                        graph_content, graph_sources = await retrieve_chunks(
                                             document_service=self.document_service,
                                             auth=auth,
-                                            query_type="subgraph",
-                                            start_nodes=[kg_data[0]["id"]],
-                                            max_depth=2,
-                                            graph_name=self.default_graph
+                                            **graph_args,
                                         )
-                                        detailed_results.append({
-                                            "source": "knowledge_graph_subgraph",
-                                            "data": json.loads(subgraph)
-                                        })
-                                    except Exception as e:
-                                        logger.warning(f"Failed to get subgraph: {e}")
-                                
-                                # Return graph results if we found any
-                                if detailed_results:
-                                    return json.dumps({
-                                        "graph_results": detailed_results,
-                                        "message": f"Found {len(kg_data)} relevant entities in knowledge graph"
-                                    })
-                        except Exception as e:
+                                        combined_content.extend(graph_content)
+                                        combined_sources.update(graph_sources)
+                                    except Exception as e:  # pragma: no cover
+                                        logger.warning(f"Failed to retrieve graph chunks: {e}")
+                        except Exception as e:  # pragma: no cover
                             logger.warning(f"Knowledge graph query failed: {e}, falling back to vector search")
                     
-                    # Fallback to vector search
+                    # Always perform standard vector search
                     try:
-                        content, found_sources = await retrieve_chunks(
+                        vec_content, vec_sources = await retrieve_chunks(
                             document_service=self.document_service,
                             auth=auth,
                             **args
                         )
-                        source_map.update(found_sources)
-                        return json.dumps(content, ensure_ascii=False)
-                    except Exception as e:
+                        combined_content.extend(vec_content)
+                        combined_sources.update(vec_sources)
+                    except Exception as e:  # pragma: no cover
                         logger.error(f"Vector search failed: {e}")
-                        return json.dumps([{"type": "text", "text": f"No chunks found for query: {query}"}])
-                
+                        if not combined_content:
+                            return json.dumps([
+                                {"type": "text", "text": f"No chunks found for query: {query}"}
+                            ])
+                        source_map.update(combined_sources)
+                        return json.dumps(combined_content, ensure_ascii=False)
                 case "retrieve_document":
                     result = await retrieve_document(
                         document_service=self.document_service,
