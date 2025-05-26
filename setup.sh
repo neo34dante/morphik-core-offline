@@ -19,15 +19,11 @@ sudo apt install -y python3.12 python3.12-venv python3.12-dev
 # 2. Install PostgreSQL 14
 echo_msg "Installing PostgreSQL 17"
 sudo apt update
-sudo apt install -y postgresql-17 postgresql-server-dev-17
+sudo apt install -y postgresql postgresql-contrib
 
 # 3. Install pgvector
 echo_msg "Installing pgvector extension"
-cd /tmp
-git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git
-cd pgvector
-make
-sudo make install
+sudo apt install -y postgresql-17-pgvector
 
 # 4. Enable pgvector in PostgreSQL
 echo_msg "Enabling pgvector extension"
