@@ -38,12 +38,6 @@ EOF
 echo_msg "Installing Ollama"
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 6. Clone Morphik repository
-echo_msg "Cloning Morphik repository"
-git clone https://github.com/neo34dante/morphik-core-offline.git
-cd morphik-core-offline
-git checkout update-local-models
-
 # 7. Set up Python virtual environment
 echo_msg "Setting up Python virtual environment"
 python3.12 -m venv venv
