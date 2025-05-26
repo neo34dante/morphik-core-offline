@@ -46,7 +46,6 @@ class MorphikAgent:
         
         # Conversation history for context
         self.conversation_history = []
-
         # Define which tools we actually have implemented
         self.implemented_tools: Set[str] = {
             "retrieve_chunks",
@@ -58,7 +57,6 @@ class MorphikAgent:
             "save_to_memory",
             "list_documents",
         }
-
         # Load tool definitions (function schemas)
         desc_path = os.path.join(os.path.dirname(__file__), "tools", "descriptions.json")
         
@@ -71,7 +69,6 @@ class MorphikAgent:
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in tool descriptions: {e}")
             all_tools_json = []
-
         # Filter tools to only include implemented ones
         self.tools_json = []
         skipped_tools = []
@@ -87,7 +84,6 @@ class MorphikAgent:
             logger.warning(
                 f"Skipping {len(skipped_tools)} unimplemented tools from descriptions.json: {', '.join(skipped_tools)}"
             )
-
         # Build tool definitions for LLM
         self.tool_definitions = []
         for tool in self.tools_json:
@@ -96,47 +92,45 @@ class MorphikAgent:
                 "description": tool["description"],
                 "parameters": tool["input_schema"],
             })
-
         logger.info(f"Loaded {len(self.tool_definitions)} tool definitions for LLM")
-
         # Enhanced system prompt with clearer instructions
         tool_descriptions = [f"- {tool['name']}: {tool['description']}" for tool in self.tools_json]
         
         self.system_prompt = f"""
-You are Morphik, an intelligent research assistant with access to a knowledge base and various analytical tools.
+You are Dante, an intelligent research assistant with access to a knowledge base and various analytical tools.
 
 CRITICAL INSTRUCTIONS:
-1. For PERSONAL QUESTIONS about yourself (Who are you? What can you do?): Answer directly without tools
-2. For DATA QUESTIONS (What is X? Tell me about Y?): Use tools to search, then synthesize results
-3. If tools return empty results, acknowledge this and provide any general knowledge you have
+1. For personal questions about yourself or contextual queries referencing the conversation or user-provided information: Answer directly using memory (conversation history or saved notes) without using tools.
+2. For topic-specific questions requiring information (e.g., about Dante or other subjects): If a knowledge graph is available, use the knowledge_graph_query tool first to find relevant entities or relationships. If graph results are insufficient or not available, use the retrieve_chunks tool to perform a vector search in the knowledge base. Gather information from these tools before formulating your answer.
+3. If the tools return no relevant information, acknowledge this in your answer and provide any helpful general knowledge you might have on the topic.
 
 TOOL USAGE RULES:
-- Use retrieve_chunks for searching content by query
-- Use list_documents to see available documents first
-- document_analyzer needs actual document IDs (not concept names like "Morphik")
-- If no results found, say so and provide alternative help
+- Use retrieve_chunks for searching content by query (semantic similarity).
+- Use knowledge_graph_query to leverage the knowledge graph for connected information. For example, use query_type="list_entities" with a keyword to find related entities, then query_type="entity" or "subgraph" with specific entity IDs or labels to get details or context. Provide start_nodes as a JSON array of strings (e.g., ["EntityName"]) and specify max_depth for deeper exploration if needed. You typically do not need to set graph_name unless switching from the default.
+- Use list_documents to see available documents (IDs and names).
+- The document_analyzer tool requires a valid document_id (from list_documents) and an analysis_type (one of "entity_extraction", "summarization", "fact_extraction", "sentiment", "full"). Do not use concept names in place of document IDs.
+- Only use the tools listed above in Available tools. Do not attempt to call any undefined or unimplemented functions (e.g., do not use tools named "function_name" or "describe").
+- If no results are found by a tool (or the tool output indicates nothing relevant), communicate that and adjust your strategy (try a different tool or inform the user).
 
 IMPORTANT ARGUMENT RULES:
-- Never pass string "null" - use actual null/None or omit optional parameters
-- Don't pass "None" as string - omit the parameter entirely
-- For integers like k, skip, limit - use actual numbers not strings
-- document_id must be an actual ID from list_documents, not a concept name
+- Never pass the string "null" or "None" as a value in tool arguments. Omit optional parameters instead of using null/None strings.
+- For numeric parameters like k, skip, limit, max_depth, use actual numbers (integers or floats) rather than strings.
+- For list parameters, provide a JSON array. (For example, start_nodes should be ["node1", "node2"] not "node1, node2".)
+- The document_id for retrieve_document or document_analyzer must be an exact ID obtained from list_documents, not a general name or concept.
 
 Available tools:
 {chr(10).join(tool_descriptions)}
 
-After gathering information (even if empty), ALWAYS provide a final response as JSON:
+After gathering information with tools (even if some tools return no results), ALWAYS provide a final response to the user in the form of a JSON array of display objects. For example:
 ```json
 [
   {{
     "type": "text",
-    "content": "Your complete answer here",
+    "content": "Your complete answer here, with references to sources as needed.",
     "source": "source-id or agent-response"
   }}
 ]
-```
-
-Current default graph: {self.default_graph or "None"}
+Ensure the answer is user-friendly and cites relevant sources by using the "source" field for each part of the answer (use the source_id for information taken from documents, or "agent-response" for your own explanatory content). Use context from the conversation and any stored memory in your answer when applicable. Current default graph: {self.default_graph or "None"}
 """.strip()
 
     def _clean_tool_args(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -168,7 +162,7 @@ Current default graph: {self.default_graph or "None"}
             cleaned[key] = value
             
         return cleaned
-
+        
     def _requires_tool_usage(self, query: str) -> bool:
         """Determine if a query requires tool usage."""
         query_lower = query.lower()
@@ -176,7 +170,10 @@ Current default graph: {self.default_graph or "None"}
         # Personal questions that don't need tools
         personal_patterns = [
             "who are you", "what are you", "what can you do",
-            "how do you work", "your capabilities", "your functions"
+            "how do you work", "your capabilities", "your functions",
+            "you said", "you told me", "i told you", "did i tell you", "you mentioned",
+            "we discussed", "we talked", "we spoke", "did we discuss", "my previous question", "previous conversation",
+            "earlier you said", "remember when"
         ]
         
         # Check if it's a personal question
@@ -200,7 +197,7 @@ Current default graph: {self.default_graph or "None"}
         # If query mentions specific entities or concepts, likely needs tools
         if len(query.split()) > 2 and "?" in query:
             return True
-            
+                
         return False
 
     async def _execute_tool(self, name: str, args: dict, auth: AuthContext, source_map: dict):
@@ -409,7 +406,7 @@ Current default graph: {self.default_graph or "None"}
                     ],
                     "sources": []
                 }
-
+        
         # Add to conversation history
         self.conversation_history.append({"role": "user", "content": query})
         
@@ -436,10 +433,10 @@ Current default graph: {self.default_graph or "None"}
         settings = get_settings()
         if self.model not in settings.REGISTERED_MODELS:
             raise ValueError(f"Model '{self.model}' not found in registered_models configuration")
-
+        
         model_config = settings.REGISTERED_MODELS[self.model]
         model_name = model_config.get("model_name")
-
+        
         # Prepare model parameters
         model_params = {
             "model": model_name,
@@ -449,18 +446,18 @@ Current default graph: {self.default_graph or "None"}
             "temperature": 0.7,
             "max_tokens": 4000,
         }
-
+        
         # Add other parameters from model config
         for key, value in model_config.items():
             if key not in ["model_name", "temperature", "max_tokens"]:
                 model_params[key] = value
-
+        
         # Limit iterations
         max_iterations = 10
         iteration = 0
         made_tool_call = False
         consecutive_errors = 0
-
+        
         while iteration < max_iterations:
             iteration += 1
             logger.info(f"Sending completion request (iteration {iteration})")
@@ -510,7 +507,7 @@ Current default graph: {self.default_graph or "None"}
                         logger.warning("Too many consecutive errors, forcing synthesis")
                         messages.append({
                             "role": "system",
-                            "content": "Multiple tool errors occurred. Please provide the best answer you can based on what you know about Morphik."
+                            "content": "Multiple tool errors occurred. Please provide the best answer you can based on what you know about the topic."
                         })
                         model_params["tool_choice"] = "none"
                 else:
@@ -535,8 +532,7 @@ Current default graph: {self.default_graph or "None"}
                 if made_tool_call and tool_history and iteration >= 3:
                     # Check if we have any meaningful results
                     has_results = any(
-                        "Found" in str(h.get("tool_result", "")) and 
-                        "Found 0" not in str(h.get("tool_result", ""))
+                        "Found" in str(h.get("tool_result", "")) and "Found 0" not in str(h.get("tool_result", ""))
                         for h in tool_history
                     )
                     
@@ -684,7 +680,7 @@ Current default graph: {self.default_graph or "None"}
                                         content_parts.append(actual_content[:500] + "...")
                         else:
                             content_parts.append("No relevant chunks were found in the vector search.")
-                            
+                
                 elif tool_name == "knowledge_graph_query":
                     if "not found" in result_str.lower() or "error" in result_str.lower():
                         content_parts.append("The knowledge graph query encountered an error.")
@@ -692,7 +688,7 @@ Current default graph: {self.default_graph or "None"}
                         result_data = json.loads(result_str)
                         if "graph_results" in result_data:
                             content_parts.append("Found information in the knowledge graph.")
-                            
+                
                 elif tool_name == "list_documents":
                     if "error" in result_str.lower():
                         content_parts.append("Could not list documents due to an error.")
@@ -710,7 +706,7 @@ Current default graph: {self.default_graph or "None"}
         
         # Combine the parts into a coherent response
         return "Based on my search:\n\n" + "\n\n".join(content_parts)
-
+        
     def stream(self, query: str):
         """Streaming stub - not implemented."""
         raise NotImplementedError("Streaming not supported yet; please use run()")
