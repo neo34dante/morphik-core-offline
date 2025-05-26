@@ -17,9 +17,9 @@ sudo apt update
 sudo apt install -y python3.12 python3.12-venv python3.12-dev
 
 # 2. Install PostgreSQL 14
-echo_msg "Installing PostgreSQL 14"
+echo_msg "Installing PostgreSQL 17"
 sudo apt update
-sudo apt install -y postgresql-14 postgresql-server-dev-14
+sudo apt install -y postgresql-17 postgresql-server-dev-17
 
 # 3. Install pgvector
 echo_msg "Installing pgvector extension"
