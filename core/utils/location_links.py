@@ -65,21 +65,26 @@ LOCATION_PATTERNS: Dict[re.Pattern, str] = {
 }
 
 def append_map_links(text: str) -> str:
-    """Append map links for any detected locations in the text.
+    """Append formatted map links for any detected locations in ``text``.
 
-    If no locations are found, the original text is returned unchanged.
+    The returned string appends a Markdown section listing unique locations as
+    numbered links. These links are formatted so the UI renders them in a new
+    browser tab.
     """
     found_links = []
+    seen = set()
     for pattern, canonical in LOCATION_PATTERNS.items():
-        if pattern.search(text):
+        if pattern.search(text) and canonical not in seen:
             url = LOCATION_URLS.get(canonical)
             if url:
-                found_links.append(f"{canonical}: {url}")
+                seen.add(canonical)
+                found_links.append((canonical, url))
 
     if not found_links:
         return text
 
-    links_text = "\n".join(found_links)
+    lines = [f"{i}. [{loc}]({url})" for i, (loc, url) in enumerate(found_links, start=1)]
+    links_text = "\n".join(lines)
     if text and not text.endswith("\n"):
         text += "\n"
-    return f"{text}\n{links_text}"
+    return f"{text}\n**Map Links**:\n{links_text}\n"
