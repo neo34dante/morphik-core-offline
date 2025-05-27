@@ -96,6 +96,7 @@ model = "ollama_chat"
 batch_size = 4096
 
 [morphik]
+enable_location_links = true
 enable_colpali = true
 mode = "self_hosted"  # "cloud" or "self_hosted"
 api_domain = "api.morphik.ai"  # API domain for cloud URIs

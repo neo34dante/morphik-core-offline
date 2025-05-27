@@ -116,6 +116,16 @@ export function PreviewMessage({ message }: Pick<MessageProps, "message">) {
                             </code>
                           );
                         },
+                        a: ({ href, children }) => (
+                          <a
+                            href={href}
+                            className="text-primary hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {children}
+                          </a>
+                        ),
                       } as Options["components"]
                     }
                   >
