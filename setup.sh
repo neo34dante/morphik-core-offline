@@ -42,8 +42,4 @@ pip install --upgrade pip
 pip install -r requirements.txt --use-deprecated=legacy-resolver
 
 # 11. Configure environment variables
-echo_msg "Configuring environment variables"
-cp .env.local.example .env.local
-sed -i 's|^#*POSTGRES_URL=.*|POSTGRES_URL=postgresql://morphik_user:morphik_pass@localhost:5432/morphik|' .env.local
-sed -i 's|^#*OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=http://localhost:11434|' .env.local
-
+echo_msg "Setup completed"
