@@ -42,7 +42,6 @@ const AgentChatSection: React.FC<AgentChatSectionProps> = ({
 
   // Textarea and scroll refs
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Function to handle form submission
@@ -179,7 +178,7 @@ const AgentChatSection: React.FC<AgentChatSectionProps> = ({
     <div className="relative flex h-full w-full flex-col bg-background">
       {/* Messages Area */}
       <div className="relative min-h-0 flex-1">
-        <ScrollArea className="h-full" ref={messagesContainerRef}>
+        <ScrollArea className="h-full">
           {messages.length === 0 && (
             <div className="flex flex-1 items-center justify-center p-8 text-center">
               <div className="max-w-md space-y-2">
