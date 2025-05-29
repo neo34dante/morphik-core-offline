@@ -521,7 +521,7 @@ class DocumentService:
         """
         if graph_name:
             # Use knowledge graph enhanced retrieval via GraphService
-            return await self.graph_service.query_with_graph(
+            response = await self.graph_service.query_with_graph(
                 query=query,
                 graph_name=graph_name,
                 auth=auth,
@@ -539,6 +539,14 @@ class DocumentService:
                 folder_name=folder_name,
                 end_user_id=end_user_id,
             )
+
+            settings = get_settings()
+            if isinstance(response.completion, str) and getattr(
+                settings, "ENABLE_LOCATION_LINKS", False
+            ):
+                response.completion = append_map_links(response.completion)
+
+            return response
 
         # Standard retrieval without graph
         chunks = await self.retrieve_chunks(
