@@ -3,6 +3,7 @@
 import MorphikUI from "../components/MorphikUI";
 import { extractTokenFromUri, getApiBaseUrlFromUri } from "../lib/utils";
 import { showAlert, showUploadAlert, removeAlert } from "../components/ui/alert-system";
+import useChatHistory from "../hooks/useChatHistory";
 
 export {
   MorphikUI,
@@ -12,6 +13,7 @@ export {
   showAlert,
   showUploadAlert,
   removeAlert,
+  useChatHistory,
 };
 
 // Export types

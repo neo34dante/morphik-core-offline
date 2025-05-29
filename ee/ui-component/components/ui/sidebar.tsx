@@ -32,6 +32,10 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   isCollapsed?: boolean;
   setIsCollapsed?: (collapsed: boolean) => void;
   onBackClick?: () => void;
+  chatList?: { id: string; title: string }[];
+  currentChatId?: string;
+  onChatSelect?: (id: string) => void;
+  onNewChat?: () => void;
 }
 
 export function Sidebar({
@@ -44,6 +48,10 @@ export function Sidebar({
   isCollapsed: externalIsCollapsed,
   setIsCollapsed: externalSetIsCollapsed,
   onBackClick,
+  chatList,
+  currentChatId,
+  onChatSelect,
+  onNewChat,
   ...props
 }: SidebarProps) {
   // Use internal state that syncs with external state if provided
@@ -287,6 +295,30 @@ export function Sidebar({
             <MessageSquare className={cn("h-5 w-5", !isCollapsed && "mr-2")} />
             {!isCollapsed && <span>Chat</span>}
           </Button>
+          {activeSection === "chat" && !isCollapsed && chatList && (
+            <div className="ml-4 mt-2 space-y-1">
+              <ScrollArea className="max-h-40 pr-2">
+                {chatList.map(chat => (
+                  <Button
+                    key={chat.id}
+                    variant={chat.id === currentChatId ? "secondary" : "ghost"}
+                    className="w-full justify-start text-xs"
+                    onClick={() => onChatSelect?.(chat.id)}
+                  >
+                    {chat.title}
+                  </Button>
+                ))}
+              </ScrollArea>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start text-xs"
+                onClick={onNewChat}
+              >
+                New Chat
+              </Button>
+            </div>
+          )}
           <Button
             variant={activeSection === "graphs" ? "secondary" : "ghost"}
             className={cn("w-full justify-start", isCollapsed && "justify-center")}

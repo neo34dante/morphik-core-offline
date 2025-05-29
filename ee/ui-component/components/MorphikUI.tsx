@@ -13,6 +13,8 @@ import { extractTokenFromUri, getApiBaseUrlFromUri } from "@/lib/utils";
 import { MorphikUIProps } from "./types";
 import { cn } from "@/lib/utils";
 import { setupLogging } from "@/lib/log";
+import { generateUUID } from "@/lib/utils";
+import useChatHistory from "@/hooks/useChatHistory";
 
 // Default API base URL
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -66,6 +68,18 @@ const MorphikUI: React.FC<MorphikUIProps> = ({
   const [activeSection, setActiveSection] = useState<SectionType>(initialSection as SectionType);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+  const { chatList, loadChatMessages, createNewChat } = useChatHistory();
+  const [currentChatId, setCurrentChatId] = useState<string>("");
+
+  useEffect(() => {
+    if (chatList.length === 0) {
+      const id = createNewChat();
+      setCurrentChatId(id);
+    } else if (!currentChatId) {
+      setCurrentChatId(chatList[0].id);
+    }
+  }, [chatList]);
+
   // Extract auth token and API URL from connection URI if provided
   const authToken = currentUri ? extractTokenFromUri(currentUri) : null;
 
@@ -77,6 +91,14 @@ const MorphikUI: React.FC<MorphikUIProps> = ({
     console.log("MorphikUI: Using API URL:", effectiveApiBaseUrl);
     console.log("MorphikUI: Auth token present:", !!authToken);
   }, [effectiveApiBaseUrl, authToken]);
+
+  const initialChatMessages = loadChatMessages(currentChatId).map(m => ({
+    id: generateUUID(),
+    role: m.role as "user" | "assistant",
+    content: m.content,
+    createdAt: new Date(),
+    experimental_customData: m.sources ? { sources: m.sources } : undefined,
+  }));
 
   // Wrapper for section change to match expected type
   const handleSectionChange = (section: string) => {
@@ -97,6 +119,10 @@ const MorphikUI: React.FC<MorphikUIProps> = ({
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
         onBackClick={onBackClick}
+        chatList={chatList}
+        currentChatId={currentChatId}
+        onChatSelect={id => setCurrentChatId(id)}
+        onNewChat={() => setCurrentChatId(createNewChat())}
       />
 
       <main className="flex flex-1 flex-col overflow-hidden">
@@ -129,6 +155,8 @@ const MorphikUI: React.FC<MorphikUIProps> = ({
             key={`chat-${effectiveApiBaseUrl}`}
             apiBaseUrl={effectiveApiBaseUrl}
             authToken={authToken}
+            chatId={currentChatId}
+            initialMessages={initialChatMessages}
             onChatSubmit={onChatSubmit}
           />
         )}

@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useMorphikChat } from "@/hooks/useMorphikChat";
 import { Folder } from "@/components/types";
-import { generateUUID } from "@/lib/utils";
 import type { QueryOptions } from "@/components/types";
 import type { UIMessage } from "./ChatMessages";
 
 import { Settings, Spin, ArrowUp } from "./icons";
 import { Button } from "@/components/ui/button";
+import SaveChatDialog from "./SaveChatDialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,10 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PreviewMessage } from "./ChatMessages";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
+import useChatHistory from "@/hooks/useChatHistory";
 
 interface ChatSectionProps {
   apiBaseUrl: string;
   authToken: string | null;
+  chatId: string;
   initialMessages?: UIMessage[];
   isReadonly?: boolean;
   onChatSubmit?: (query: string, options: QueryOptions, initialMessages?: UIMessage[]) => void;
@@ -31,12 +33,13 @@ interface ChatSectionProps {
 const ChatSection: React.FC<ChatSectionProps> = ({
   apiBaseUrl,
   authToken,
+  chatId,
   initialMessages = [],
   isReadonly = false,
   onChatSubmit,
 }) => {
-  // Generate a unique chat ID if not provided
-  const chatId = generateUUID();
+  
+  const { saveChatMessages } = useChatHistory();
 
   // Initialize our custom hook
   const { messages, input, setInput, status, handleSubmit, queryOptions, updateQueryOption } = useMorphikChat({
@@ -45,6 +48,11 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     authToken,
     initialMessages,
     onChatSubmit,
+    onMessagesChange: msgs =>
+      saveChatMessages(
+        chatId,
+        msgs.map(m => ({ role: m.role, content: m.content, sources: m.experimental_customData?.sources }))
+      ),
   });
 
   // Helper to safely update options (updateQueryOption may be undefined in readonly mode)
@@ -69,6 +77,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
 
   // State for settings visibility
   const [showSettings, setShowSettings] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);  
   const [availableGraphs, setAvailableGraphs] = useState<string[]>([]);
   const [loadingGraphs, setLoadingGraphs] = useState(false);
   const [loadingFolders, setLoadingFolders] = useState(false);
@@ -200,14 +209,19 @@ const ChatSection: React.FC<ChatSectionProps> = ({
 
   return (
     <div className="relative flex h-full w-full flex-col bg-background">
-      {/* Chat Header
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm">
-        <div className="flex h-14 items-center justify-between px-4 border-b">
-          <div className="flex items-center">
-            <h1 className="font-semibold text-lg tracking-tight">Morphik Chat</h1>
-          </div>
+                <div className="flex h-14 items-center justify-between border-b px-4">
+          <h1 className="font-semibold text-lg tracking-tight">Morphik Chat</h1>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSaveDialog(true)}
+            className="text-xs"
+          >
+            Save Chat
+          </Button>
         </div>
-      </div> */}
+      </div>
 
       {/* Messages Area */}
       <div className="relative min-h-0 flex-1">
@@ -485,6 +499,11 @@ const ChatSection: React.FC<ChatSectionProps> = ({
           </form>
         </div>
       </div>
+      <SaveChatDialog
+        messages={messages}
+        open={showSaveDialog}
+        setOpen={setShowSaveDialog}
+      />
     </div>
   );
 };

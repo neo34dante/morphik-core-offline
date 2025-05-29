@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from 'react';
 import type { UIMessage } from "@/components/chat/ChatMessages";
 import { showAlert } from "@/components/ui/alert-system";
 import { generateUUID } from "@/lib/utils";
@@ -39,6 +39,7 @@ interface UseMorphikChatProps {
   initialMessages?: UIMessage[];
   initialQueryOptions?: Partial<QueryOptions>;
   onChatSubmit?: (query: string, options: QueryOptions, currentMessages: UIMessage[]) => void;
+  onMessagesChange?: (messages: UIMessage[]) => void;
 }
 
 export function useMorphikChat({
@@ -48,6 +49,7 @@ export function useMorphikChat({
   initialMessages = [],
   initialQueryOptions = {},
   onChatSubmit,
+  onMessagesChange,
 }: UseMorphikChatProps): UseMorphikChatReturn {
   const [messages, setMessages] = useState<UIMessage[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,6 +118,7 @@ export function useMorphikChat({
           query: newUserMessage.content,
           ...currentQueryOptions,
           filters: parsedFilters ?? {},
+          chat_history: messagesBeforeUpdate.map(m => ({ role: m.role, content: m.content })),
         } as Record<string, unknown>;
 
         const response = await fetch(`${apiBaseUrl}/query`, {
@@ -225,6 +228,10 @@ export function useMorphikChat({
     console.warn("stop function not implemented");
     setIsLoading(false);
   }, []);
+
+  useEffect(() => {
+    onMessagesChange?.(messages);
+  }, [messages, onMessagesChange]);
 
   return {
     messages,
