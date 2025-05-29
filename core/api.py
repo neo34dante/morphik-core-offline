@@ -794,6 +794,7 @@ async def query_completion(request: CompletionQueryRequest, auth: AuthContext = 
             request.folder_name,
             request.end_user_id,
             request.schema,
+            request.chat_history,
         )
     except ValueError as e:
         validate_prompt_overrides_with_http_exception(operation_type="query", error=e)

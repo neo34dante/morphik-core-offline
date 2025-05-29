@@ -984,6 +984,7 @@ class GraphService:
                 graph_name=None,
                 folder_name=folder_name,
                 end_user_id=end_user_id,
+                chat_history=None,
             )
 
         # Parallel approach
@@ -1425,6 +1426,7 @@ class GraphService:
             prompt_template=custom_prompt_template,
             folder_name=folder_name,
             end_user_id=end_user_id,
+            chat_history=None,
         )
 
         # Get completion from model

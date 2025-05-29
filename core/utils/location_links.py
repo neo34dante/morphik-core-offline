@@ -26,7 +26,7 @@ INDIA_LOCATIONS = {
     "Chennai": {"lat": 13.0827, "lon": 80.2707, "zoom": 11},  # Chennai city
     "Bengaluru": {"lat": 12.9716, "lon": 77.5946, "zoom": 11},  # Bengaluru city
     "Leh": {"lat": 34.152588, "lon": 77.577049, "zoom": 11},
-    "Ladakh": {"lat": 34.209515, "lon": 77.615112, "zoom": 6},
+    "Ladakh": {"lat": 34.209515, "lon": 77.615112, "zoom": 8},
     "Hanle": {"lat": 32.790000, "lon": 79.000000, "zoom": 11},
     "Chumathang": {"lat": 33.360000, "lon": 78.340000, "zoom": 11},
     "Karzok": {"lat": 32.968125, "lon": 78.2639885, "zoom": 11},

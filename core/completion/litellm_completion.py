@@ -334,6 +334,11 @@ class LiteLLMCompletionModel(BaseCompletionModel):
         system_message = {"role": "system", "content": get_system_message()["content"]}
         user_message_data = {"role": "user", "content": user_content}
 
+        history_msgs = [
+            {"role": m.role, "content": m.content}
+            for m in (request.chat_history or [])
+        ]
+
         # Add images directly to the user message if available
         if ollama_image_data:
             if len(ollama_image_data) > 1:
@@ -344,7 +349,7 @@ class LiteLLMCompletionModel(BaseCompletionModel):
             # Add 'images' key inside the user message dictionary
             user_message_data["images"] = [ollama_image_data[0]]
 
-        ollama_messages = [system_message, user_message_data]
+        ollama_messages = [system_message, *history_msgs, user_message_data]
 
         # Construct Ollama options
         options = {
@@ -391,8 +396,12 @@ class LiteLLMCompletionModel(BaseCompletionModel):
 
         # LiteLLM uses list content format
         user_message = {"role": "user", "content": content_list}
+        history_msgs = [
+            {"role": m.role, "content": m.content}
+            for m in (request.chat_history or [])
+        ]
         # Use the system prompt defined earlier
-        litellm_messages = [get_system_message(), user_message]
+        litellm_messages = [get_system_message(), *history_msgs, user_message]
 
         # Prepare LiteLLM parameters
         model_params = {

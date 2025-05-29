@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from core.models.documents import Document
 from core.models.prompts import GraphPromptOverrides, QueryPromptOverrides
-
+from .chat import ChatMessage
 
 class RetrieveRequest(BaseModel):
     """Base retrieve request model"""
@@ -40,7 +40,9 @@ class CompletionQueryRequest(RetrieveRequest):
         None,
         description="Schema for structured output, can be a Pydantic model or JSON schema dict",
     )
-
+    chat_history: Optional[List[ChatMessage]] = Field(
+        None, description="Optional previous messages for conversational context"
+    )
     model_config = ConfigDict(protected_namespaces=("model_",))
 
 class IngestTextRequest(BaseModel):
