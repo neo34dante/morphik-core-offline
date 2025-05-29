@@ -8,7 +8,7 @@ import type { UIMessage } from "./ChatMessages";
 
 import { Settings, Spin, ArrowUp } from "./icons";
 import { Button } from "@/components/ui/button";
-import SaveChatDialog from "./SaveChatDialog";
+import SaveChatDialog  from "./SaveChatDialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -197,7 +197,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   };
 
   // Messages container ref for scrolling
-  const messagesContainerRef = React.useRef<HTMLDivElement>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
   // Scroll to bottom when messages change
@@ -225,7 +224,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
 
       {/* Messages Area */}
       <div className="relative min-h-0 flex-1">
-        <ScrollArea className="h-full" ref={messagesContainerRef}>
+        <ScrollArea className="h-full">
           {messages.length === 0 && (
             <div className="flex flex-1 items-center justify-center p-8 text-center">
               <div className="max-w-md space-y-2">
